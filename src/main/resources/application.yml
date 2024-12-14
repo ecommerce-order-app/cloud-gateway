@@ -1,0 +1,78 @@
+server:
+  port: 8000
+
+#spring.datasource.url=jdbc:h2:mem:testdb
+#spring.datasource.driverClassName=org.h2.Driver
+#spring.datasource.username=sa
+#spring.datasource.password=password
+#spring.jpa.database-platform=org.hibernate.dialect.H2Dialect
+resilience4j:
+  circuitbreaker:
+    instances:
+      external:
+        event-consumer-buffer-size: 10
+        failure-rate-threshold: 50
+        minimum-number-of-calls: 5
+        wait-duration-in-open-state: 5s
+        automatic-transition-from-open-to-half-open-enabled: true
+        permitted-number-of-calls-in-half-open-state: 3
+        sliding-window-size: 10
+        sliding-window-type: COUNT_BASED
+spring:
+  cloud:
+    gateway:
+      routes:
+        - id: ORDER-SERVICE
+          uri: lb://ORDER-SERVICE
+          predicates:
+            - Path=/order/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: orderServiceFallback
+                fallbackUri: forward:/order/fallback
+                
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 1  # Number of requests allowed per second
+                redis-rate-limiter.burstCapacity: 1  # Maximum number of requests allowed in a burst
+                 
+          
+        - id: PaymentService
+          uri: lb://PaymentService
+          predicates:
+            - Path=/payment/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: productServiceFallback
+                fallbackUri: forward:/payment/fallback
+                
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 1  # Number of requests allowed per second
+                redis-rate-limiter.burstCapacity: 1  # Maximum number of requests allowed in a burst
+                
+                
+        - id: PRODUCT-SERVICE
+          uri: lb://PRODUCT-SERVICE
+          predicates:
+            - Path=/product/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: paymentServiceFallback
+                fallbackUri: forward:/product/fallback
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 1 
+                redis-rate-limiter.burstCapacity: 1 
+                
+    compatibility-verifier:
+      enabled: false
+          
+  application:
+    name: CLOUD-GATEWAY
+  config:
+    import:
+    - configserver:http://localhost:8090/
